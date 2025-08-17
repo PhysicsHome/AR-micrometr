@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="kk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SaL Physics • AR-микрометр (WebAR)</title>
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+  <style>
+    :root { --bg: rgba(18,18,20,.85); --bd: rgba(255,255,255,.18); --fg:#fff; }
+    body { margin:0; overflow:hidden; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    #hud { position:fixed; inset:0 auto auto 0; right:0; background:var(--bg); color:var(--fg); padding:.6rem .8rem; display:flex; gap:.8rem; align-items:center; flex-wrap:wrap; z-index:10; border-bottom:1px solid var(--bd); backdrop-filter: blur(6px); }
+    .badge { padding:.2rem .5rem; border:1px solid var(--bd); border-radius:.5rem; font-size:.8rem; }
+    label { font-size:.9rem; opacity:.95; display:flex; align-items:center; gap:.35rem; }
+    input[type=number], input[type=text] { padding:.35rem .5rem; border-radius:.5rem; border:1px solid var(--bd); background:rgba(255,255,255,.1); color:#fff; width:5.7rem; }
+    input[type=range] { width:140px; }
+    button { padding:.45rem .7rem; border-radius:.6rem; border:1px solid var(--bd); background:#2b7fff; color:#fff; cursor:pointer; }
+    button.secondary { background:transparent; }
+    #toast { position:fixed; bottom:12px; left:50%; transform:translateX(-50%); background:#111; color:#fff; padding:.6rem .9rem; border-radius:.7rem; border:1px solid rgba(255,255,255,.15); opacity:0; transition:opacity .25s ease; z-index:10; }
+    #toast.show { opacity:1; }
+    details { margin-left:auto; }
+    summary { cursor:pointer; }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <span class="badge">AR-микрометр • SaL Physics</span>
+    <label>Барабан (0–50 бөлік): <input id="thimble" type="range" min="0" max="50" step="1" value="0"> <span id="thimbleVal">0</span></label>
+    <label>Слив (мм): <input id="sleeve" type="range" min="0" max="25" step="1" value="0"> <span id="sleeveVal">0</span></label>
+    <label>Нақты оқу (мм): <input id="readout" type="text" readonly></label>
+    <label>Тапсырма (мм): <input id="target" type="number" step="0.01" placeholder="мыс.: 2.35"></label>
+    <button id="check">Тексеру</button>
+    <button id="zero" class="secondary">Нөлдеу</button>
+    <details>
+      <summary>Нұсқаулық</summary>
+      <div style="max-width:560px; line-height:1.35; padding-top:.35rem;">
+        1) Hiro маркерін көрсетіңіз (A5–A4 өлшемімен басу ұсынылады).<br>
+        2) Камераны маркерге бағыттаңыз — микрометр пайда болады.<br>
+        3) <b>Слив (мм)</b> жүгірткісі – бүтін миллиметрлер, <b>Барабан</b> – 0–50 бөлік (әр бөлік 0.01 мм).<br>
+        4) Оқу формуласы: <i>L = sleeve + thimble×0.01 мм</i> (бұранда қадамы 0.5 мм/айн., 50 бөлік → 0.01 мм).<br>
+        5) «Тапсырма (мм)» өрісіне мақсат мәнді енгізіп, жүгірткілермен сәйкес позицияны табыңыз.
+      </div>
+    </details>
+  </div>
+  <div id="toast"></div>
+
+  <a-scene embedded vr-mode-ui="enabled: false" renderer="logarithmicDepthBuffer: true" arjs="sourceType: webcam; detectionMode: mono; debugUIEnabled: false;">
+    <a-marker preset="hiro" size="0.16">
+      <!-- Тірек жазықтық -->
+      <a-plane position="0 0 0" rotation="-90 0 0" width="1" height="1" color="#333" opacity="0.12"></a-plane>
+
+      <!-- C-Frame (рамка) -->
+      <a-entity id="frame" position="0 0.02 0" rotation="-90 0 0">
+        <!-- Жоғарғы/төменгі арқалықтар -->
+        <a-box position="0.00 0.06 0" depth="0.02" height="0.012" width="0.22" color="#4f5562"></a-box>
+        <a-box position="0.00 -0.06 0" depth="0.02" height="0.012" width="0.22" color="#4f5562"></a-box>
+        <!-- Артқы тірек -->
+        <a-box position="-0.105 0 0" depth="0.02" height="0.1" width="0.012" color="#4f5562"></a-box>
+      </a-entity>
+
+      <!-- Анвил (сол жақ бекітілген тірек) -->
+      <a-cylinder id="anvil" color="#d0d5db" radius="0.006" height="0.016" position="-0.02 0.02 0.0" rotation="0 0 90"></a-cylinder>
+
+      <!-- Слив (sleeve) – стационар бөлік, шкаласы бар -->
+      <a-cylinder id="sleeveMesh" color="#bfc7cf" radius="0.0085" height="0.09" position="0.07 0.02 0" rotation="0 0 90"></a-cylinder>
+      <a-entity id="sleeveScale" position="0.07 0.02 0.011" rotation="0 0 90"></a-entity>
+
+      <!-- Шпиндель (қозғалатын) -->
+      <a-cylinder id="spindle" color="#e6e9ee" radius="0.006" height="0.038" position="0.03 0.02 0" rotation="0 0 90"></a-cylinder>
+
+      <!-- Барабан (thimble) -->
+      <a-cylinder id="thimbleMesh" color="#9aa3ad" radius="0.013" height="0.04" position="0.095 0.02 0" rotation="0 0 90"></a-cylinder>
+      <a-entity id="thimbleScale" position="0.095 0.02 0.014" rotation="0 0 90"></a-entity>
+
+      <!-- Қысқыш тұтқа (декор) -->
+      <a-box position="0.12 0.02 0" depth="0.02" height="0.012" width="0.03" color="#4f5562"></a-box>
+
+      <!-- Қызыл нөл сызығы (оқу терезесі) -->
+      <a-box id="zeroLine" position="0.085 0.02 0.017" depth="0.0025" height="0.0018" width="0.018" color="#e74c3c" rotation="0 0 90"></a-box>
+
+      <!-- Көрнекі үшін миллиметрлік эталон -->
+      <a-box position="-0.12 0.02 0.012" depth="0.001" height="0.006" width="0.03" color="#caa472"></a-box>
+      <a-text value="10 мм эталон" position="-0.12 0.035 0.012" rotation="0 0 0" width="0.4" color="#222"></a-text>
+
+    </a-marker>
+
+    <a-entity camera></a-entity>
+  </a-scene>
+
+  <script>
+    // Параметрлер
+    // Бұранда қадамы p = 0.5 мм/айн. (микрометрлерде жиі қолданылады); thimble 50 бөлік → 0.01 мм/бөлік
+    const PITCH_MM = 0.5; 
+    const THIMBLE_DIVISIONS = 50; // 0..49
+
+    const hud = {
+      thimble: document.getElementById('thimble'),
+      thimbleVal: document.getElementById('thimbleVal'),
+      sleeve: document.getElementById('sleeve'),
+      sleeveVal: document.getElementById('sleeveVal'),
+      readout: document.getElementById('readout'),
+      target: document.getElementById('target'),
+      check: document.getElementById('check'),
+      zero: document.getElementById('zero'),
+      toast: document.getElementById('toast'),
+    };
+
+    const parts = {
+      sleeveScale: document.getElementById('sleeveScale'),
+      thimbleScale: document.getElementById('thimbleScale'),
+      thimbleMesh: document.getElementById('thimbleMesh'),
+      spindle: document.getElementById('spindle')
+    };
+
+    function toast(msg){ hud.toast.textContent = msg; hud.toast.classList.add('show'); setTimeout(()=>hud.toast.classList.remove('show'), 1600); }
+
+    // Слив шкаласын салу (0–25 мм)
+    function buildSleeveScale(){
+      const e = parts.sleeveScale; e.innerHTML='';
+      const maxMM = 25;
+      for(let mm=0; mm<=maxMM; mm++){
+        const tick = document.createElement('a-box');
+        const big = (mm%5===0);
+        tick.setAttribute('width', big?0.016:0.01);
+        tick.setAttribute('height', 0.0018);
+        tick.setAttribute('depth', 0.001);
+        // 1 мм = 0.002 м бойымен (шамаланған визуал пропорция)
+        const y = (mm * 0.002) - 0.025; // -ден +-ке орталау
+        tick.setAttribute('position', `0 ${y.toFixed(3)} 0`);
+        tick.setAttribute('color', '#111');
+        e.appendChild(tick);
+        if(big){
+          const label = document.createElement('a-text');
+          label.setAttribute('value', mm.toString());
+          label.setAttribute('width', 0.5);
+          label.setAttribute('align', 'left');
+          label.setAttribute('color', '#111');
+          label.setAttribute('position', `0 ${ (y+0.003).toFixed(3) } 0`);
+          e.appendChild(label);
+        }
+      }
+    }
+
+    // Барабан шкаласы (0–50 бөлік айнала бойынша)
+    function buildThimbleScale(){
+      const e = parts.thimbleScale; e.innerHTML='';
+      const radius = 0.0135; // шамамен барабан радиусы
+      for(let d=0; d<THIMBLE_DIVISIONS; d++){
+        const ang = (d/THIMBLE_DIVISIONS) * Math.PI * 2; // 0..2π
+        const x = 0;
+        const y = Math.sin(ang) * radius;
+        const z = Math.cos(ang) * radius;
+        const tick = document.createElement('a-box');
+        tick.setAttribute('width', 0.0012);
+        tick.setAttribute('height', 0.004);
+        tick.setAttribute('depth', 0.0012);
+        tick.setAttribute('color', (d%5===0)?'#111':'#333');
+        tick.setAttribute('position', `${x} ${y.toFixed(4)} ${z.toFixed(4)}`);
+        e.appendChild(tick);
+        if(d%10===0){
+          const label = document.createElement('a-text');
+          label.setAttribute('value', d.toString());
+          label.setAttribute('width', 0.4);
+          label.setAttribute('align', 'center');
+          label.setAttribute('color', '#111');
+          label.setAttribute('position', `${x} ${(y*1.08).toFixed(4)} ${(z*1.08).toFixed(4)}`);
+          e.appendChild(label);
+        }
+      }
+    }
+
+    // Оқу және геометрияны жаңарту
+    function updateReading(){
+      const div = parseInt(hud.thimble.value); // 0..50
+      const mm = parseInt(hud.sleeve.value);  // бүтін мм
+      hud.thimbleVal.textContent = div;
+      hud.sleeveVal.textContent = mm;
+      const L = mm + div*0.01; // мм
+      hud.readout.value = L.toFixed(2);
+
+      // Барабанның айналуы (солға/оңға): 360° * (div/50)
+      const rotDeg = (div/THIMBLE_DIVISIONS) * 360;
+      const rot = parts.thimbleMesh.getAttribute('rotation');
+      parts.thimbleMesh.setAttribute('rotation', `${rot.x} ${rot.y} ${90+rotDeg}`);
+
+      // Шпиндель ілгері/кейін жылжу: әр 1 мм sleeve → -1 мм; әр div → -0.01 мм (X осі бойымен)
+      const baseX = 0.03; // бастапқы позиция
+      const x = baseX - L/1000; // мм → м (1 мм = 0.001 м)
+      parts.spindle.setAttribute('position', `${x.toFixed(3)} 0.02 0`);
+    }
+
+    function zero(){ hud.sleeve.value=0; hud.thimble.value=0; updateReading(); }
+
+    function check(){
+      const target = parseFloat(hud.target.value);
+      if(isNaN(target)) { toast('Алдымен «Тапсырма (мм)» мәнін енгізіңіз.'); return; }
+      const L = parseFloat(hud.readout.value);
+      const err = Math.abs(L - target);
+      let msg = `Оқу=${L.toFixed(2)} мм • Қате ±${err.toFixed(2)} мм`;
+      if(err<=0.02) msg = 'Тамаша! Дәлдік шегінде ✅';
+      else if(err<=0.05) msg += ' • Жақсы нәтиже ✅';
+      else msg += ' • Тағы реттеңіз ⛔';
+      toast(msg);
+    }
+
+    window.addEventListener('DOMContentLoaded', ()=>{
+      buildSleeveScale();
+      buildThimbleScale();
+      updateReading();
+      hud.thimble.addEventListener('input', updateReading);
+      hud.sleeve.addEventListener('input', updateReading);
+      hud.zero.addEventListener('click', zero);
+      hud.check.addEventListener('click', check);
+    });
+  </script>
+
+  <!-- Ескертпе:
+    • Бұл оқу-симуляция: нақты объектіні шынайы қысып өлшеуден гөрі, шкаланы оқуды үйрету үшін арналған.
+    • Егер нысанды шын өлшеу керек болса, маркерді жаппай орналастыру және екі маркер қолдану ұсынылады.
+  -->
+</body>
+</html>
