@@ -25,6 +25,7 @@
 <body>
   <div id="hud">
     <span class="badge">AR-микрометр • SaL Physics</span>
+    <label>Масштаб: <input id="scale" type="range" min="100" max="300" value="220"> <span id="scaleVal">220%</span></label>
     <label>Барабан (0–50 бөлік): <input id="thimble" type="range" min="0" max="50" step="1" value="0"> <span id="thimbleVal">0</span></label>
     <label>Слив (мм): <input id="sleeve" type="range" min="0" max="25" step="1" value="0"> <span id="sleeveVal">0</span></label>
     <label>Нақты оқу (мм): <input id="readout" type="text" readonly></label>
@@ -45,7 +46,8 @@
   <div id="toast"></div>
 
   <a-scene embedded vr-mode-ui="enabled: false" renderer="logarithmicDepthBuffer: true" arjs="sourceType: webcam; detectionMode: mono; debugUIEnabled: false;">
-    <a-marker preset="hiro" size="0.16">
+<a-marker preset="hiro" size="0.20">
+  <a-entity id="mic" scale="2.2 2.2 2.2" position="0 0 0">
       <!-- Тірек жазықтық -->
       <a-plane position="0 0 0" rotation="-90 0 0" width="1" height="1" color="#333" opacity="0.12"></a-plane>
 
@@ -81,7 +83,7 @@
       <!-- Көрнекі үшін миллиметрлік эталон -->
       <a-box position="-0.12 0.02 0.012" depth="0.001" height="0.006" width="0.03" color="#caa472"></a-box>
       <a-text value="10 мм эталон" position="-0.12 0.035 0.012" rotation="0 0 0" width="0.4" color="#222"></a-text>
-
+  </a-entity>
     </a-marker>
 
     <a-entity camera></a-entity>
@@ -102,7 +104,8 @@
       target: document.getElementById('target'),
       check: document.getElementById('check'),
       zero: document.getElementById('zero'),
-      toast: document.getElementById('toast'),
+      toast: document.getElementById('toast'),scale: document.getElementById('scale'),
+      scaleVal: document.getElementById('scaleVal'),
     };
 
     const parts = {
@@ -211,6 +214,16 @@
       hud.sleeve.addEventListener('input', updateReading);
       hud.zero.addEventListener('click', zero);
       hud.check.addEventListener('click', check);
+      // Масштабты басқару
+const mic = document.getElementById('mic');
+function applyScaleUI(){
+  const pct = parseInt(hud.scale.value) || 220;
+  hud.scaleVal.textContent = pct + '%';
+  const s = pct/100;
+  if (mic) mic.setAttribute('scale', `${s} ${s} ${s}`);
+}
+applyScaleUI();
+hud.scale.addEventListener('input', applyScaleUI);
     });
   </script>
 
